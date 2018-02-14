@@ -8,18 +8,6 @@ from sklearn.naive_bayes import MultinomialNB
 from sklearn.ensemble import RandomForestClassifier
 
 
-df_train = pd.read_csv('raw_data/training_data.csv')
-
-reindexed_list = ['id', 'game', 'white', 'black', 'white_elo', 'black_elo', 'white_rd',
-                'black_rd', 'whiteiscomp', 'blackiscomp', 'timecontrol', 'date', 'time',
-                'white_clock', 'black_clock', 'eco', 'plycount', 'moves',
-                'commentaries']
-df_train = df_train.reindex(reindexed_list, axis=1)
-
-# Split into testing and training set
-X = df_train.iloc[:, 0:18]
-y = df_train['commentaries']
-X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.10)
 
 # Functin to process_data into appropriate form.......
 def process_data(X_dummy):
@@ -78,8 +66,9 @@ def map_y_values(y):
 
 # Make changes to model here
 def fit_model(X, y):
-    clf = RandomForestClassifier()
+    clf = RandomForestClassifier(n_estimators = 33, max_features="auto")
     clf.fit(X,y)
+    print('Classifier Ready')
     return clf
 
 
@@ -98,3 +87,37 @@ def invert_mapping(y):
     inv_map = {v:k for k,v in forward_map.items()}
     y = y.map(inv_map)
     return y
+
+def make_submission(path, clf):
+    official_data = pd.read_csv(path)
+    temp = official_data.copy()
+    temp = process_data(temp)
+    np_results = clf.predict(temp)
+    results_official = pd.Series(np_results)
+    results_official = invert_mapping(results_official)
+    pd.DataFrame({"id": official_data['id'],
+                        "commentaries": results_official}).set_index("id").to_csv('best.csv')
+
+if __name__ == "__main__":
+    df_train = pd.read_csv('raw_data/training_data.csv')
+
+    reindexed_list = ['id', 'game', 'white', 'black', 'white_elo', 'black_elo', 'white_rd',
+                    'black_rd', 'whiteiscomp', 'blackiscomp', 'timecontrol', 'date', 'time',
+                    'white_clock', 'black_clock', 'eco', 'plycount', 'moves',
+                    'commentaries']
+    df_train = df_train.reindex(reindexed_list, axis=1)
+
+    # Split into testing and training set
+    X = df_train.iloc[:, 0:18]
+    y = df_train['commentaries']
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.10)
+
+    X_train = process_data(X_train)
+    y_train = map_y_values(y_train)
+
+    m_clf = fit_model(X_train, y_train)
+
+    X_test = process_data(X_test)
+    y_test = map_y_values(y_test)
+    results = m_clf.predict(X_test)
+    print(accuracy_score(y_test, results))
