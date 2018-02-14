@@ -6,15 +6,16 @@ from sklearn.linear_model import LogisticRegression
 from sklearn.metrics import accuracy_score
 from sklearn.naive_bayes import MultinomialNB
 from sklearn.ensemble import RandomForestClassifier
-
+from sklearn import preprocessing
 
 
 # Functin to process_data into appropriate form.......
-def process_data(X_dummy):
+def process_data(X_dummy, le):
     # features to drop instantly
     features_to_drop = ['id', 'game', 'white', 'black', 'date', 'black_clock']
     X_dummy.drop(features_to_drop, axis=1, inplace=True)
 
+    X_dummy['eco'] = pd.Series(le.transform(list(X_dummy['eco'])), index=X_dummy.index)
     # map whiteiscomp and blackiscomp to binary
     X_dummy['whiteiscomp'] = X_dummy['whiteiscomp'].map({False: 0,
                                                      True:1})
@@ -36,7 +37,7 @@ def process_data(X_dummy):
     X_dummy['extended_time'] = pd.Series(extended_time, index=X_dummy.index)
 
     # some more features to drop
-    X_dummy.drop(['timecontrol', 'moves', 'eco', 'white_clock'], axis=1, inplace=True)
+    X_dummy.drop(['timecontrol', 'moves', 'white_clock'], axis=1, inplace=True)
 
     # fix the time feature
     time_period = []
@@ -66,7 +67,7 @@ def map_y_values(y):
 
 # Make changes to model here
 def fit_model(X, y):
-    clf = RandomForestClassifier(n_estimators = 33, max_features="auto")
+    clf = RandomForestClassifier(n_estimators = 33, max_features=5, min_samples_leaf=2, oob_score=True)
     clf.fit(X,y)
     print('Classifier Ready')
     return clf
@@ -88,15 +89,15 @@ def invert_mapping(y):
     y = y.map(inv_map)
     return y
 
-def make_submission(path, clf):
+def make_submission(path, clf, le):
     official_data = pd.read_csv(path)
     temp = official_data.copy()
-    temp = process_data(temp)
+    temp = process_data(temp, le)
     np_results = clf.predict(temp)
     results_official = pd.Series(np_results)
     results_official = invert_mapping(results_official)
     pd.DataFrame({"id": official_data['id'],
-                        "commentaries": results_official}).set_index("id").to_csv('best.csv')
+                        "commentaries": results_official}).set_index("id").to_csv('latest.csv')
 
 if __name__ == "__main__":
     df_train = pd.read_csv('raw_data/training_data.csv')
@@ -107,17 +108,22 @@ if __name__ == "__main__":
                     'commentaries']
     df_train = df_train.reindex(reindexed_list, axis=1)
 
+    le = preprocessing.LabelEncoder()
+    le.fit(list(df_train['eco']))
+    # df_train['eco'] = pd.Series(le.transform(list(df_train['eco'])), index=df_train.index)
+
     # Split into testing and training set
     X = df_train.iloc[:, 0:18]
     y = df_train['commentaries']
-    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.10)
+    X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.05)
 
-    X_train = process_data(X_train)
+    X_train = process_data(X_train, le)
     y_train = map_y_values(y_train)
 
     m_clf = fit_model(X_train, y_train)
 
-    X_test = process_data(X_test)
+    # make_submission("raw_data/testing_data.csv", m_clf, le)
+    X_test = process_data(X_test, le)
     y_test = map_y_values(y_test)
     results = m_clf.predict(X_test)
     print(accuracy_score(y_test, results))
